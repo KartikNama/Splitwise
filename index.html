@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SplitEase — Smart Group Expense Splitter</title>
+  <meta name="description" content="Effortlessly split bills, track group expenses, calculate optimal debt settlements, and share directly with friends with one click." />
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  
+  <!-- Supabase Client Library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- QR Code & Confetti Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="theme-dark">
+  <div id="app" class="app-container">
+    
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="brand-logo">
+          <i class="fa-solid fa-receipt"></i>
+        </div>
+        <div>
+          <h1 class="brand-name">SplitEase</h1>
+          <span class="brand-tagline">Fair & instant bill splitting</span>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <!-- DB Sync Status Badge -->
+        <button id="dbStatusBtn" class="badge badge-db-status" title="Database Connection Status">
+          <span class="status-dot status-offline" id="dbStatusDot"></span>
+          <span id="dbStatusText">Local</span>
+        </button>
+
+        <!-- Currency Selector -->
+        <div class="currency-selector-wrapper">
+          <label for="currencySelect" class="sr-only">Currency</label>
+          <select id="currencySelect" class="select-chip" title="Change Currency">
+            <option value="$">USD ($)</option>
+            <option value="₹" selected>INR (₹)</option>
+            <option value="€">EUR (€)</option>
+            <option value="£">GBP (£)</option>
+            <option value="AED">AED (AED)</option>
+            <option value="C$">CAD (C$)</option>
+            <option value="A$">AUD (A$)</option>
+            <option value="¥">JPY (¥)</option>
+          </select>
+        </div>
+
+        <!-- Share Group Button -->
+        <button id="shareGroupBtn" class="btn btn-primary-glow btn-sm">
+          <i class="fa-solid fa-share-nodes"></i>
+          <span>Share with Friends</span>
+        </button>
+
+        <!-- New / Reset Group Menu -->
+        <button id="groupMenuBtn" class="btn btn-ghost btn-icon" title="Group Settings & Data">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="main-content">
+      
+      <!-- Group Info Banner / Header Card -->
+      <section class="group-hero-card">
+        <div class="hero-left">
+          <div class="group-title-container">
+            <span class="badge badge-subtle" id="groupCategoryBadge">
+              <i class="fa-solid fa-plane"></i> Trip
+            </span>
+            <h2 id="groupNameDisplay" class="group-title" contenteditable="true" spellcheck="false" title="Click to rename group">Goa Vacation 🌴</h2>
+            <button id="renameGroupBtn" class="edit-icon-btn" title="Edit Group Name">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+          </div>
+          <p class="group-subtitle" id="groupMembersCount">4 friends in this group</p>
+        </div>
+
+        <div class="hero-stats">
+          <div class="stat-box">
+            <span class="stat-label">Total Expense</span>
+            <span class="stat-value text-accent" id="totalExpenseAmount">₹0.00</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Per Person Avg</span>
+            <span class="stat-value" id="avgExpenseAmount">₹0.00</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Total Transactions</span>
+            <span class="stat-value" id="totalExpenseCount">0</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Friends & Members Pill Bar -->
+      <section class="members-section">
+        <div class="section-heading-sm">
+          <span><i class="fa-solid fa-user-group"></i> Group Friends</span>
+          <button id="addMemberQuickBtn" class="btn-text-accent">
+            <i class="fa-solid fa-plus"></i> Add Friend
+          </button>
+        </div>
+
+        <div class="members-chip-list" id="membersChipList">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </section>
+
+      <!-- Main Navigation Tabs -->
+      <nav class="nav-tabs" role="tablist">
+        <button class="tab-btn active" data-tab="expenses" id="tabExpensesBtn">
+          <i class="fa-solid fa-list-check"></i>
+          <span>Expenses</span>
+          <span class="tab-badge" id="expensesBadgeCount">0</span>
+        </button>
+        <button class="tab-btn" data-tab="settle" id="tabSettleBtn">
+          <i class="fa-solid fa-handshake-angle"></i>
+          <span>Settlements & Balances</span>
+          <span class="tab-badge pulse" id="settleBadgeCount">0</span>
+        </button>
+        <button class="tab-btn" data-tab="breakdown" id="tabBreakdownBtn">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Analytics</span>
+        </button>
+      </nav>
+
+      <!-- TAB 1: EXPENSES VIEW -->
+      <section id="tab-expenses" class="tab-panel active">
+        <div class="action-bar">
+          <div class="search-filter-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="expenseSearchInput" placeholder="Search by name, payer, category..." />
+          </div>
+
+          <div class="filter-controls">
+            <select id="filterCategorySelect" class="filter-select">
+              <option value="ALL">All Categories</option>
+              <option value="Food">🍽️ Food & Dining</option>
+              <option value="Travel">🚗 Travel & Cab</option>
+              <option value="Stay">🏨 Stay & Hotel</option>
+              <option value="Entertainment">🎟️ Entertainment</option>
+              <option value="Drinks">🍻 Drinks & Party</option>
+              <option value="Groceries">🛒 Groceries</option>
+              <option value="Other">📦 Other</option>
+            </select>
+
+            <button id="openAddExpenseBtn" class="btn btn-primary btn-add-expense">
+              <i class="fa-solid fa-plus"></i>
+              <span>Add Expense</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Expenses List Container -->
+        <div class="expenses-list" id="expensesList">
+          <!-- Injected dynamically -->
+        </div>
+
+        <!-- Empty State for Expenses -->
+        <div class="empty-state hidden" id="expensesEmptyState">
+          <div class="empty-icon">
+            <i class="fa-solid fa-receipt"></i>
+          </div>
+          <h3>No expenses recorded yet!</h3>
+          <p>Add your first shared expense or bill to calculate balances automatically.</p>
+          <button class="btn btn-primary" id="emptyAddExpenseBtn">
+            <i class="fa-solid fa-plus"></i> Add First Expense
+          </button>
+        </div>
+      </section>
+
+      <!-- TAB 2: SETTLEMENTS & BALANCES VIEW -->
+      <section id="tab-settle" class="tab-panel">
+        
+        <!-- Optimal Settlement Instructions (Who pays Whom) -->
+        <div class="settle-card-highlight">
+          <div class="settle-card-header">
+            <div>
+              <h3><i class="fa-solid fa-bolt text-warning"></i> Simplified Debt Settlement</h3>
+              <p class="text-muted text-sm">Optimal transactions calculated using the minimum cash-flow debt simplification algorithm.</p>
+            </div>
+            <button id="copySettlementSummaryBtn" class="btn btn-outline btn-sm" title="Copy clean summary to WhatsApp/Clipboard">
+              <i class="fa-regular fa-copy"></i> Copy for WhatsApp
+            </button>
+          </div>
+
+          <div class="settlements-container" id="settlementsList">
+            <!-- Populated dynamically with optimal transfers -->
+          </div>
+
+          <div id="allSettledState" class="all-settled-state hidden">
+            <div class="settled-icon">
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <h4>All Settled Up! 🎉</h4>
+            <p>Everyone is square. No one owes anyone anything!</p>
+          </div>
+        </div>
+
+        <!-- Net Balances Per Member Grid -->
+        <div class="balance-summary-section">
+          <h3 class="section-title"><i class="fa-solid fa-scale-balanced"></i> Member Net Balances</h3>
+          <div class="balances-grid" id="balancesGrid">
+            <!-- Injected dynamically -->
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: ANALYTICS & BREAKDOWN VIEW -->
+      <section id="tab-breakdown" class="tab-panel">
+        <div class="analytics-grid">
+          
+          <!-- Category Spending Breakdown -->
+          <div class="analytics-card">
+            <h3><i class="fa-solid fa-chart-pie"></i> Spending by Category</h3>
+            <div class="category-bars-list" id="categoryBarsList">
+              <!-- Dynamically rendered progress bars -->
+            </div>
+          </div>
+
+          <!-- Who Paid What Breakdown -->
+          <div class="analytics-card">
+            <h3><i class="fa-solid fa-wallet"></i> Who Paid What</h3>
+            <div class="paid-bars-list" id="paidBarsList">
+              <!-- Dynamically rendered progress bars -->
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Floating Action Button for Mobile -->
+    <button class="fab-btn" id="mobileAddExpenseBtn" title="Add Expense">
+      <i class="fa-solid fa-plus"></i>
+    </button>
+
+    <!-- Mobile Bottom Navigation Bar (Dock) -->
+    <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
+      <button class="mobile-nav-item active" data-tab="expenses" id="mobileNavExpenses">
+        <i class="fa-solid fa-list-check"></i>
+        <span>Expenses</span>
+      </button>
+
+      <button class="mobile-nav-item" data-tab="settle" id="mobileNavSettle">
+        <i class="fa-solid fa-handshake-angle"></i>
+        <span>Balances</span>
+      </button>
+
+      <div class="mobile-nav-fab-slot">
+        <button class="mobile-nav-center-btn" id="mobileNavAddBtn" title="Add New Expense">
+          <i class="fa-solid fa-plus"></i>
+        </button>
+      </div>
+
+      <button class="mobile-nav-item" data-tab="breakdown" id="mobileNavBreakdown">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>Analytics</span>
+      </button>
+
+      <button class="mobile-nav-item" id="mobileNavShareBtn">
+        <i class="fa-solid fa-share-nodes"></i>
+        <span>Share</span>
+      </button>
+    </nav>
+
+    <!-- MODAL 1: ADD / EDIT EXPENSE -->
+    <div class="modal-backdrop hidden" id="expenseModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="expenseModalTitle"><i class="fa-solid fa-receipt"></i> Add New Expense</h3>
+          <button class="modal-close-btn" id="closeExpenseModalBtn">&times;</button>
+        </div>
+        
+        <form id="expenseForm">
+          <input type="hidden" id="editExpenseId" value="" />
+
+          <div class="form-group">
+            <label for="expenseTitle">Expense Description</label>
+            <input type="text" id="expenseTitle" placeholder="e.g., Dinner at Beach Shack, Uber to Resort" required autocomplete="off" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="expenseAmount">Total Amount (<span class="currency-symbol-label">₹</span>)</label>
+              <div class="amount-input-wrapper">
+                <span class="input-currency-addon currency-symbol-label">₹</span>
+                <input type="number" id="expenseAmount" step="0.01" min="0.01" placeholder="0.00" required />
+              </div>
+            </div>
+
+            <div class="form-group flex-1">
+              <label for="expenseCategory">Category</label>
+              <select id="expenseCategory">
+                <option value="Food">🍽️ Food & Dining</option>
+                <option value="Travel">🚗 Travel & Cab</option>
+                <option value="Stay">🏨 Stay & Hotel</option>
+                <option value="Drinks">🍻 Drinks & Party</option>
+                <option value="Groceries">🛒 Groceries</option>
+                <option value="Entertainment">🎟️ Entertainment</option>
+                <option value="Other">📦 Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="expensePaidBy">Paid by</label>
+              <select id="expensePaidBy" required>
+                <!-- Populated dynamically with friends -->
+              </select>
+            </div>
+
+            <div class="form-group flex-1">
+              <label for="expenseDate">Date</label>
+              <input type="date" id="expenseDate" required />
+            </div>
+          </div>
+
+          <!-- Split Mode Selection -->
+          <div class="split-configuration-box">
+            <div class="split-type-header">
+              <label>Split Method</label>
+              <div class="segmented-control">
+                <button type="button" class="segment-btn active" data-mode="EQUAL">Equally</button>
+                <button type="button" class="segment-btn" data-mode="EXACT">Unequal (Exact)</button>
+              </div>
+            </div>
+
+            <div class="split-target-label">Split Among:</div>
+            
+            <!-- Dynamic participant checklist -->
+            <div class="split-members-list" id="splitMembersList">
+              <!-- Dynamically populated checkboxes / exact amount inputs -->
+            </div>
+
+            <div class="split-summary-info" id="splitSummaryInfo">
+              <!-- e.g. Split equally between 4 people (₹150.00 each) -->
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" id="cancelExpenseModalBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="saveExpenseBtn">Save Expense</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL 2: ADD / MANAGE MEMBERS -->
+    <div class="modal-backdrop hidden" id="memberModal">
+      <div class="modal-card modal-sm">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-user-plus"></i> Manage Friends</h3>
+          <button class="modal-close-btn" id="closeMemberModalBtn">&times;</button>
+        </div>
+
+        <div class="member-management-body">
+          <form id="addMemberForm" class="add-member-form">
+            <input type="text" id="newMemberName" placeholder="Enter friend's name..." required />
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+
+          <div class="existing-members-list" id="existingMembersList">
+            <!-- Dynamically populated with delete / rename option -->
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="finishMemberModalBtn">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: SHARE WITH FRIENDS (Instant Link & QR) -->
+    <div class="modal-backdrop hidden" id="shareModal">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-share-nodes"></i> Share with Friends</h3>
+          <button class="modal-close-btn" id="closeShareModalBtn">&times;</button>
+        </div>
+
+        <div class="share-modal-body">
+          <p class="share-desc">
+            Anyone with this link will immediately see all expenses, members, and settlement calculations in real-time. No sign-up required!
+          </p>
+
+          <div class="share-link-box">
+            <input type="text" id="shareLinkInput" readonly />
+            <button id="copyShareLinkBtn" class="btn btn-primary">
+              <i class="fa-regular fa-copy"></i> Copy Link
+            </button>
+          </div>
+
+          <div class="share-quick-buttons">
+            <a id="whatsappShareBtn" target="_blank" class="btn btn-whatsapp">
+              <i class="fa-brands fa-whatsapp"></i> Share on WhatsApp
+            </a>
+            <button id="copyTextSummaryBtn" class="btn btn-secondary">
+              <i class="fa-solid fa-file-lines"></i> Copy Text Summary
+            </button>
+          </div>
+
+          <!-- QR Code Container -->
+          <div class="qr-section">
+            <p class="text-sm text-muted">Scan to open on phone:</p>
+            <div id="qrcode" class="qr-box"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 4: RECORD SETTLEMENT / PAYMENT -->
+    <div class="modal-backdrop hidden" id="settlePaymentModal">
+      <div class="modal-card modal-sm">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-handshake"></i> Record Settlement</h3>
+          <button class="modal-close-btn" id="closeSettlePaymentModalBtn">&times;</button>
+        </div>
+
+        <form id="settlePaymentForm">
+          <div class="settle-notice" id="settleNoticeText">
+            Recording payment from <strong>Alice</strong> to <strong>Bob</strong>
+          </div>
+
+          <input type="hidden" id="settleFromMember" />
+          <input type="hidden" id="settleToMember" />
+
+          <div class="form-group">
+            <label for="settleAmountInput">Payment Amount (<span class="currency-symbol-label">₹</span>)</label>
+            <div class="amount-input-wrapper">
+              <span class="input-currency-addon currency-symbol-label">₹</span>
+              <input type="number" id="settleAmountInput" step="0.01" min="0.01" required />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="settleNotes">Payment Note (Optional)</label>
+            <input type="text" id="settleNotes" placeholder="e.g., Paid via GPay / Venmo / Cash" />
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" id="cancelSettlePaymentModalBtn">Cancel</button>
+            <button type="submit" class="btn btn-success"><i class="fa-solid fa-check"></i> Record Payment</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL 5: GROUP SETTINGS / DATA BACKUP & RESTORE -->
+    <div class="modal-backdrop hidden" id="settingsModal">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-gear"></i> Settings & Cloud Sync</h3>
+          <button class="modal-close-btn" id="closeSettingsModalBtn">&times;</button>
+        </div>
+
+        <div class="settings-modal-body">
+          
+          <!-- Supabase DB Configuration Box -->
+          <div class="supabase-connect-card">
+            <div class="supabase-card-header">
+              <div>
+                <strong><i class="fa-solid fa-database text-accent"></i> Supabase Database Sync</strong>
+                <p class="text-xs text-muted">Connect your Supabase project for real-time multiplayer syncing across all friends.</p>
+              </div>
+              <button id="openSupabaseModalBtn" class="btn btn-primary-glow btn-sm">
+                <i class="fa-solid fa-bolt"></i> Configure
+              </button>
+            </div>
+            <div class="supabase-status-row">
+              <span class="text-xs">Status:</span>
+              <span class="badge badge-subtle text-xs" id="supabaseStatusBadge">Local Storage (Not Connected)</span>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div>
+              <strong>Sample Demo Data</strong>
+              <p class="text-sm text-muted">Load sample trip expenses with 4 friends to test features.</p>
+            </div>
+            <button id="loadSampleDataBtn" class="btn btn-secondary btn-sm">Load Demo</button>
+          </div>
+
+          <div class="setting-item">
+            <div>
+              <strong>Export Group Data (JSON)</strong>
+              <p class="text-sm text-muted">Download all expenses and member logs to a file.</p>
+            </div>
+            <button id="exportJsonBtn" class="btn btn-secondary btn-sm">
+              <i class="fa-solid fa-download"></i> Export JSON
+            </button>
+          </div>
+
+          <div class="setting-item">
+            <div>
+              <strong>Import Group Data</strong>
+              <p class="text-sm text-muted">Restore expenses from a previously saved JSON file.</p>
+            </div>
+            <label class="btn btn-secondary btn-sm cursor-pointer">
+              <i class="fa-solid fa-upload"></i> Import JSON
+              <input type="file" id="importJsonInput" accept=".json" class="hidden" />
+            </label>
+          </div>
+
+          <div class="setting-item border-danger">
+            <div>
+              <strong class="text-danger">Reset / Clear All Data</strong>
+              <p class="text-sm text-muted">Delete all members and expenses to start a fresh group.</p>
+            </div>
+            <button id="resetAllDataBtn" class="btn btn-danger btn-sm">
+              <i class="fa-solid fa-trash"></i> Reset Group
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 6: CONFIGURE SUPABASE MODAL -->
+    <div class="modal-backdrop hidden" id="supabaseModal">
+      <div class="modal-card modal-md">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-database text-accent"></i> Connect Supabase Database</h3>
+          <button class="modal-close-btn" id="closeSupabaseModalBtn">&times;</button>
+        </div>
+
+        <form id="supabaseConfigForm">
+          <p class="text-sm text-secondary mb-3">
+            Save your group expenses in your own Postgres database with instant real-time live sync.
+          </p>
+
+          <div class="form-group">
+            <label for="supabaseUrlInput">Project URL</label>
+            <input type="url" id="supabaseUrlInput" placeholder="https://xyzcompany.supabase.co" required />
+          </div>
+
+          <div class="form-group">
+            <label for="supabaseKeyInput">Anon / Public API Key</label>
+            <input type="password" id="supabaseKeyInput" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." required />
+          </div>
+
+          <div class="form-group">
+            <label for="supabaseGroupIdInput">Group Cloud ID / Room Code</label>
+            <input type="text" id="supabaseGroupIdInput" placeholder="e.g. goa-trip-2026" required />
+            <span class="text-xs text-muted">Friends who share this Group ID will sync with the same expense ledger.</span>
+          </div>
+
+          <div class="sql-info-box">
+            <div class="sql-info-header">
+              <span class="text-xs font-bold"><i class="fa-solid fa-code"></i> Database Setup (SQL Schema)</span>
+              <button type="button" class="btn-text-accent text-xs" id="copySqlSchemaBtn">
+                <i class="fa-regular fa-copy"></i> Copy SQL Schema
+              </button>
+            </div>
+            <p class="text-xs text-muted">
+              Run this in your Supabase SQL Editor once to create tables with real-time replication enabled.
+            </p>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" id="disconnectSupabaseBtn">Disconnect / Use Local</button>
+            <button type="submit" class="btn btn-primary" id="saveSupabaseBtn">Save & Connect</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
