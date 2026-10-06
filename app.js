@@ -251,21 +251,39 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
   // INITIALIZATION & URL / STORAGE / SUPABASE SYNC
   // ==========================================================================
 
-  function init() {
+  async function init() {
     loadSupabaseConfig();
     loadStateFromUrlOrStorage();
     setupEventListeners();
     renderAll();
 
-    // Check if Supabase credentials exist and initialize cloud sync
+    // Set today's date in add expense modal by default
+    el.expenseDate.value = new Date().toISOString().split('T')[0];
+
+    // 1. Fetch Server .env Config (Automatically connects all friends to the same Supabase project)
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const serverConfig = await res.json();
+        if (serverConfig.supabaseUrl && serverConfig.supabaseAnonKey) {
+          supabaseConfig.url = serverConfig.supabaseUrl;
+          supabaseConfig.key = serverConfig.supabaseAnonKey;
+          if (!supabaseConfig.groupId || supabaseConfig.groupId === 'default-trip') {
+            supabaseConfig.groupId = serverConfig.defaultGroupId || 'default-trip';
+          }
+          localStorage.setItem('splitease_supabase_config', JSON.stringify(supabaseConfig));
+        }
+      }
+    } catch (e) {
+      console.log('Server config not reachable, using local/saved config', e);
+    }
+
+    // 2. Connect to Supabase if credentials are available (from server .env or localStorage)
     if (supabaseConfig.url && supabaseConfig.key) {
       connectToSupabase(supabaseConfig.url, supabaseConfig.key, supabaseConfig.groupId);
     } else {
       updateDbStatusUI('offline');
     }
-
-    // Set today's date in add expense modal by default
-    el.expenseDate.value = new Date().toISOString().split('T')[0];
   }
 
   function loadSupabaseConfig() {
