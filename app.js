@@ -258,7 +258,9 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
     renderAll();
 
     // Set today's date in add expense modal by default
-    el.expenseDate.value = new Date().toISOString().split('T')[0];
+    if (el.expenseDate) {
+      el.expenseDate.value = new Date().toISOString().split('T')[0];
+    }
 
     // 1. Fetch Server .env Config (Automatically connects all friends to the same Supabase project)
     try {
@@ -268,8 +270,12 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
         if (serverConfig.supabaseUrl && serverConfig.supabaseAnonKey) {
           supabaseConfig.url = serverConfig.supabaseUrl;
           supabaseConfig.key = serverConfig.supabaseAnonKey;
-          if (!supabaseConfig.groupId || supabaseConfig.groupId === 'default-trip') {
+          
+          // If URL doesn't have an explicit room hash, use defaultGroupId from server .env
+          const hash = window.location.hash;
+          if (!hash || !hash.startsWith('#room=')) {
             supabaseConfig.groupId = serverConfig.defaultGroupId || 'default-trip';
+            state.groupId = supabaseConfig.groupId;
           }
           localStorage.setItem('splitease_supabase_config', JSON.stringify(supabaseConfig));
         }
@@ -280,7 +286,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
 
     // 2. Connect to Supabase if credentials are available (from server .env or localStorage)
     if (supabaseConfig.url && supabaseConfig.key) {
-      connectToSupabase(supabaseConfig.url, supabaseConfig.key, supabaseConfig.groupId);
+      await connectToSupabase(supabaseConfig.url, supabaseConfig.key, supabaseConfig.groupId || state.groupId);
     } else {
       updateDbStatusUI('offline');
     }
@@ -390,7 +396,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
         .eq('id', state.groupId)
         .single();
 
-      if (groupErr && groupErr.code === 'PGRST116') {
+      if (groupErr && (groupErr.code === 'PGRST116' || groupErr.message?.includes('No rows'))) {
         // Group doesn't exist yet, insert local state into Supabase
         await supabaseClient.from('groups').insert({
           id: state.groupId,
@@ -427,32 +433,35 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
         // Group exists in Supabase, load cloud records
         state.groupName = groupData.name || state.groupName;
         state.currency = groupData.currency || state.currency;
+        if (el.currencySelect) el.currencySelect.value = state.currency;
 
         // Fetch members
         const { data: membersData } = await supabaseClient
           .from('members')
           .select('*')
-          .eq('group_id', state.groupId);
-        if (membersData && membersData.length > 0) {
-          state.members = membersData.map(m => ({ id: m.id, name: m.name, color: m.color }));
+          .eq('group_id', state.groupId)
+          .order('created_at', { ascending: true });
+        if (membersData) {
+          state.members = membersData.map(m => ({ id: m.id, name: m.name, color: m.color || '#3b82f6' }));
         }
 
         // Fetch expenses
         const { data: expensesData } = await supabaseClient
           .from('expenses')
           .select('*')
-          .eq('group_id', state.groupId);
+          .eq('group_id', state.groupId)
+          .order('created_at', { ascending: false });
         if (expensesData) {
           state.expenses = expensesData.map(e => ({
             id: e.id,
             title: e.title,
             amount: parseFloat(e.amount) || 0,
-            category: e.category,
+            category: e.category || 'Other',
             paidBy: e.paid_by,
             date: e.date,
-            splitMode: e.split_mode,
+            splitMode: e.split_mode || 'EQUAL',
             splits: e.splits || {},
-            isSettlement: e.is_settlement
+            isSettlement: !!e.is_settlement
           }));
         }
       }
@@ -468,7 +477,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
     } catch (err) {
       console.error('Supabase connection error:', err);
       updateDbStatusUI('offline');
-      showToast('Supabase connection failed. Check URL & Key.', 'error');
+      showToast('Supabase connection failed. Check URL & Key in .env or settings.', 'error');
     }
   }
 
@@ -536,6 +545,11 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
       if (!state.members.some(m => m.id === newRec.id)) {
         state.members.push({ id: newRec.id, name: newRec.name, color: newRec.color });
       }
+    } else if (eventType === 'UPDATE') {
+      const idx = state.members.findIndex(m => m.id === newRec.id);
+      if (idx !== -1) {
+        state.members[idx] = { id: newRec.id, name: newRec.name, color: newRec.color };
+      }
     } else if (eventType === 'DELETE') {
       state.members = state.members.filter(m => m.id !== oldRec.id);
     }
@@ -548,6 +562,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;`;
     if (newRec) {
       state.groupName = newRec.name || state.groupName;
       state.currency = newRec.currency || state.currency;
+      if (el.currencySelect) el.currencySelect.value = state.currency;
       saveStateToStorage();
       renderAll();
     }
